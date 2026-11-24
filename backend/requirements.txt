@@ -1,0 +1,9 @@
+# RepoCrew backend dependencies (pinned)
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.9
+anthropic==2.13.0
+httpx==0.28.1
+python-dotenv==1.2.4
+pytest==9.2.0
+pytest-cov==7.1.0
