@@ -12,7 +12,12 @@ services:
       - RC_MODE=demo
       - RC_MODEL=claude-sonnet-5-5
       - RC_DEMO_SPEED=normal
+      - RC_DB_PATH=/app/data/repocrew.db
       - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000
+      # For RC_MODE=live or real GitHub PRs, add (uncomment and fill in):
+      # - ANTHROPIC_API_KEY=
+      # - GITHUB_TOKEN=
+      # - RC_GITHUB_REPO=owner/name
     volumes:
       - repocrew-data:/app/data
       # Mount Docker socket if host Docker is available for the sandbox

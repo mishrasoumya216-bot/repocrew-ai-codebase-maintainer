@@ -152,6 +152,11 @@ docker compose up --build -d
 ```
 The container builds the frontend in a multi-stage process and runs the FastAPI backend on port 8000.
 
+### AWS EC2 (free tier)
+See [`deploy/aws/README.md`](deploy/aws/README.md) for exact step-by-step
+console instructions and a ready-to-paste bootstrap script — same
+`docker compose up --build -d` under the hood, no code changes needed.
+
 ### Health Check Endpoint
 - `GET /health` or `GET /api/health`
 ```json

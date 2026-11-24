@@ -14,15 +14,24 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Docker CLI only (talks to the HOST daemon over the socket mounted by
+# docker-compose.yml; no local daemon needed here). Without this binary the
+# Tester silently falls back to the unisolated local sandbox even though the
+# host socket is mounted, since probe_docker() just checks `which docker`.
+COPY --from=docker:29-cli /usr/local/bin/docker /usr/local/bin/docker
+
 WORKDIR /app
 
 # Install Python dependencies
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r ./backend/requirements.txt
 
-# Copy backend code, sample repository, and built frontend
+# Copy backend code, sample repository, sandbox build context, and built frontend.
+# sandbox/ must be present so probe_docker() can build the repocrew-sandbox
+# image (via the host daemon) the first time this container starts.
 COPY backend/ ./backend/
 COPY sample_repo/ ./sample_repo/
+COPY sandbox/ ./sandbox/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 COPY .env.example ./
 
