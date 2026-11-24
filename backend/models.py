@@ -1,7 +1,6 @@
 """RepoCrew ORM models (SQLite today, Postgres-compatible schema)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, ForeignKey
@@ -127,16 +126,6 @@ class TestResult(Base):
 
 # Alias TesterResult for TestResult as required by RepoCrew models schema
 TesterResult = TestResult
-
-
-@dataclass
-class ReproductionPlan:
-    strategy: str = "existing"  # "existing" | "new"
-    test_name: str | None = None
-    file_path: str | None = None
-    content: str | None = None
-    diff: str | None = None
-    is_new_file: bool = False
 
 
 class PullRequest(Base):
