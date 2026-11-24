@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: repocrew-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - RC_MODE=demo
+      - RC_MODEL=claude-sonnet-5-5
+      - RC_DEMO_SPEED=normal
+      - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000
+    volumes:
+      - repocrew-data:/app/data
+      # Mount Docker socket if host Docker is available for the sandbox
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  repocrew-data:
