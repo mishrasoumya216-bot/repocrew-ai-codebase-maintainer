@@ -1,0 +1,10 @@
+{
+  "name": "repocrew",
+  "private": true,
+  "version": "0.1.0",
+  "description": "RepoCrew — hosted-preview launcher shim. The app itself lives in backend/ (FastAPI) and frontend/ (Vite); locally use run.ps1 or run.sh instead.",
+  "scripts": {
+    "build": "npm --prefix frontend install --no-audit --no-fund && npm --prefix frontend run build",
+    "start": "sh -c '[ -x .venv/bin/python ] && PY=.venv/bin/python || PY=python3; exec \"$PY\" -m uvicorn backend.main:app --host 0.0.0.0 --port \"${PORT:-3000}\"'"
+  }
+}

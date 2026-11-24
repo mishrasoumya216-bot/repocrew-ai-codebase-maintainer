@@ -1,0 +1,3045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RepoCrew — AI Junior Maintainer for GitHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #000000;
+      --panel: #0a0c0e;
+      --panel-hover: #111418;
+      --line: #1f2428;
+      --line-bright: #30363d;
+      --text: #e6e8ea;
+      --muted: #8a9096;
+      --accent: #3de8d0;
+      --accent-dim: rgba(61, 232, 208, 0.15);
+      --accent-glow: rgba(61, 232, 208, 0.4);
+      --status-working: #3de8d0;
+      --status-done: #7ee787;
+      --status-failed: #ff6b6b;
+      --status-waiting: #8a9096;
+      --status-skipped: #e3b341;
+      --diff-add-bg: rgba(126, 231, 135, 0.12);
+      --diff-add-text: #7ee787;
+      --diff-del-bg: rgba(255, 107, 107, 0.12);
+      --diff-del-text: #ff6b6b;
+      --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+      --font-display: "Sora", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.5;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button, input, select {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 2px;
+    }
+
+    /* Accessibility focus */
+    a:focus-visible, button:focus-visible, input:focus-visible, [tabindex="0"]:focus-visible {
+      outline: 1px solid rgba(255, 255, 255, 0.7);
+      outline-offset: 3px;
+    }
+
+    /* Canvas Background */
+    #bg-canvas-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+    #bg-canvas-container.interactive {
+      pointer-events: auto;
+    }
+    #bg-canvas-container.dimmed {
+      opacity: 0.22;
+    }
+    #bg-canvas-container.hidden-canvas {
+      opacity: 0.06;
+    }
+    .fallback-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 65% 50%, #0e171b 0%, #000000 70%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .fallback-bg.active {
+      opacity: 1;
+    }
+
+    /* App Shell */
+    #app {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      min-height: 100vh;
+    }
+
+    /* View transition container */
+    .view-container {
+      display: none;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 250ms ease, transform 250ms ease;
+      min-height: 100vh;
+      width: 100%;
+    }
+    .view-container.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Common Components */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+      width: fit-content;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .dot-working { background-color: var(--status-working); box-shadow: 0 0 6px var(--status-working); }
+    .dot-done { background-color: var(--status-done); }
+    .dot-failed { background-color: var(--status-failed); }
+    .dot-waiting { background-color: var(--status-waiting); }
+    .dot-skipped { background-color: var(--status-skipped); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.25s, background-color 0.25s, color 0.25s;
+    }
+    .btn:hover {
+      border-color: var(--text);
+      background: var(--panel-hover);
+    }
+    .btn-solid {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+      font-weight: 500;
+    }
+    .btn-solid:hover {
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
+    }
+    .btn-accent {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .btn-accent:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    /* ==========================================================================
+       VIEW 1: LOGIN VIEW
+       ========================================================================== */
+    #view-login {
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100vh;
+      overflow: hidden;
+      padding: 32px 48px;
+    }
+    .login-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      z-index: 20;
+    }
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .cube-icon {
+      width: 20px;
+      height: 20px;
+      border: 1px solid var(--accent);
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+    .cube-icon::after {
+      content: "";
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+    }
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+    }
+    .brand-name {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--text);
+    }
+    .brand-subtitle {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    .login-nav {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .login-nav-link {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      transition: color 0.25s;
+      cursor: pointer;
+    }
+    .login-nav-link:hover {
+      color: var(--text);
+    }
+    .login-nav-btn {
+      padding: 7px 16px;
+      border: 1px solid var(--line);
+      color: var(--text);
+      font-size: 11px;
+      transition: border-color 0.25s, color 0.25s;
+    }
+    .login-nav-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .login-body {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      flex: 1;
+      width: 100%;
+      padding-right: clamp(10px, 4vw, 40px);
+    }
+
+    .login-panel {
+      width: min(34vw, 560px);
+      min-width: 360px;
+      background: rgba(10, 12, 14, 0.85);
+      border: 1px solid var(--line);
+      padding: 44px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .login-panel-title {
+      font-family: var(--font-display);
+      font-weight: 200;
+      font-size: clamp(40px, 4.6vw, 60px);
+      line-height: 1.0;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    .login-tagline {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      margin-top: -8px;
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .email-input-wrap {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .email-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      padding: 12px 0;
+      font-size: 13px;
+      text-transform: none;
+      transition: border-color 0.25s;
+    }
+    .email-input:focus {
+      outline: none;
+      border-bottom-color: var(--accent);
+    }
+    .email-input::placeholder {
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .email-error {
+      color: var(--status-failed);
+      font-size: 11px;
+      margin-top: 6px;
+      display: none;
+      text-transform: uppercase;
+    }
+
+    .login-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .demo-access-link {
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+      margin-top: 4px;
+      cursor: pointer;
+      transition: color 0.25s;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+    .demo-access-link:hover {
+      color: var(--accent);
+    }
+
+    .login-footer {
+      font-size: 11px;
+      color: var(--muted);
+      max-width: 900px;
+      z-index: 20;
+      line-height: 1.6;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+    }
+    .login-footer strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    /* Mobile hamburger menu */
+    .menu-toggle {
+      display: none;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .mobile-menu-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+      clip-path: circle(0% at 90% 5%);
+      transition: clip-path 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+    .mobile-menu-overlay.open {
+      clip-path: circle(150% at 90% 5%);
+      pointer-events: auto;
+    }
+    .mobile-close-btn {
+      position: absolute;
+      top: 32px;
+      right: 32px;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 8px 16px;
+    }
+
+    /* ==========================================================================
+       VIEW 2: DASHBOARD VIEW
+       ========================================================================== */
+    #view-dashboard {
+      display: none;
+      min-height: 100vh;
+      width: 100%;
+    }
+    #view-dashboard.active {
+      display: flex;
+    }
+
+    /* Left Rail */
+    .left-rail {
+      width: 320px;
+      min-width: 320px;
+      border-right: 1px solid var(--line);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      transition: transform 0.3s ease;
+    }
+    .rail-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .filter-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .filter-chip {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-chip:hover {
+      color: var(--text);
+      border-color: var(--line-bright);
+    }
+    .filter-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .runs-column {
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .runs-column::-webkit-scrollbar {
+      display: none;
+    }
+
+    .run-card {
+      border-top: 1px solid var(--line);
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: background-color 0.2s, border-left-color 0.2s;
+      border-left: 2px solid transparent;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .run-card:hover {
+      background: var(--panel);
+    }
+    .run-card.selected {
+      border-left-color: var(--accent);
+      background: #0d1115;
+    }
+    .run-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .run-card-title {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 210px;
+      text-transform: none;
+    }
+    .run-card-num {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 400;
+    }
+    .run-card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .run-card-status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 2px;
+    }
+
+    /* Main Dashboard Area */
+    .dashboard-main {
+      flex: 1;
+      padding: 32px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 36px;
+      max-width: 1380px;
+      overflow-y: auto;
+    }
+
+    .dashboard-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 20px;
+    }
+    .dash-title-group h1 {
+      font-family: var(--font-display);
+      font-weight: 200;
+      font-size: 26px;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+    .dash-title-group p {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+    .dash-top-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .runs-today-counter {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--accent);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-dim);
+      color: var(--accent);
+      line-height: 1;
+    }
+    .counter-val {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .counter-lbl {
+      font-size: 8px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* Stat Blocks Row */
+    .stat-blocks-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+    .stat-block {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color 0.25s;
+    }
+    .stat-block:hover {
+      border-color: var(--line-bright);
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+    }
+    .stat-num {
+      font-family: var(--font-display);
+      font-weight: 200;
+      font-size: 38px;
+      line-height: 1;
+      color: #ffffff;
+    }
+
+    /* Run On Issue Box */
+    .run-box-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .run-box-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .run-box-title {
+      font-size: 12px;
+      color: #ffffff;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+    .run-inputs-row {
+      display: flex;
+      gap: 12px;
+    }
+    .run-input {
+      background: #000000;
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 10px 14px;
+      flex: 1;
+      font-size: 12px;
+      transition: border-color 0.25s;
+    }
+    .run-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .run-input-short {
+      max-width: 180px;
+    }
+
+    /* Recent Runs Table */
+    .table-container {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      overflow-x: auto;
+    }
+    .runs-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .runs-table th {
+      background: #000000;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 400;
+    }
+    .runs-table td {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      font-size: 11px;
+      vertical-align: middle;
+    }
+    .runs-table tr:last-child td {
+      border-bottom: none;
+    }
+    .runs-table tr {
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .runs-table tr:hover td {
+      background: var(--panel-hover);
+    }
+    .runs-table-title {
+      font-weight: 500;
+      color: #ffffff;
+      text-transform: none;
+    }
+
+    .runs-drawer-btn {
+      display: none;
+    }
+
+    /* ==========================================================================
+       VIEW 3: RUN DETAIL VIEW (HERO DEMO PAGE)
+       ========================================================================== */
+    #view-run {
+      display: none;
+      flex-direction: column;
+      min-height: 100vh;
+      width: 100%;
+      background: var(--bg);
+      padding: 32px 48px;
+      gap: 32px;
+      max-width: 1480px;
+      margin: 0 auto;
+    }
+    #view-run.active {
+      display: flex;
+    }
+
+    .run-page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 24px;
+      gap: 20px;
+    }
+    .run-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .run-back-link {
+      color: var(--muted);
+      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: color 0.2s;
+      width: fit-content;
+    }
+    .run-back-link:hover {
+      color: var(--accent);
+    }
+    .run-issue-title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .run-issue-title {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: clamp(22px, 2.5vw, 30px);
+      color: #ffffff;
+      text-transform: none;
+      letter-spacing: -0.01em;
+    }
+    .run-issue-num {
+      color: var(--muted);
+      font-size: 18px;
+      font-weight: 300;
+    }
+    .run-repo-badge {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .run-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* PIPELINE SECTION */
+    .pipeline-wrapper {
+      position: relative;
+      width: 100%;
+      margin: 12px 0 16px 0;
+    }
+    .pipeline-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      position: relative;
+    }
+    /* Connecting Line */
+    .pipeline-connector-line {
+      position: absolute;
+      top: 50px;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      background: var(--line);
+      z-index: 1;
+      pointer-events: none;
+    }
+    .pipeline-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      z-index: 2;
+      transition: border-color 0.25s, box-shadow 0.25s;
+      min-height: 140px;
+    }
+    .pipeline-card.working {
+      border-color: var(--accent);
+      animation: cyanPulse 2s infinite ease-in-out;
+    }
+    @keyframes cyanPulse {
+      0% { border-color: rgba(61, 232, 208, 0.4); box-shadow: 0 0 0px rgba(61, 232, 208, 0); }
+      50% { border-color: rgba(61, 232, 208, 1); box-shadow: 0 0 12px rgba(61, 232, 208, 0.25); }
+      100% { border-color: rgba(61, 232, 208, 0.4); box-shadow: 0 0 0px rgba(61, 232, 208, 0); }
+    }
+    .pipeline-card.done {
+      border-color: var(--line-bright);
+    }
+    .pipeline-card.failed {
+      border-color: var(--status-failed);
+    }
+
+    /* Animated dashed stream to working agent */
+    .animated-stream {
+      position: absolute;
+      top: 50px;
+      height: 2px;
+      background-image: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
+      background-size: 12px 2px;
+      animation: streamDash 0.8s linear infinite;
+      z-index: 3;
+      display: none;
+    }
+    @keyframes streamDash {
+      0% { background-position: 0 0; }
+      100% { background-position: 24px 0; }
+    }
+
+    .agent-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .agent-name {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+    .attempt-tag {
+      font-size: 9px;
+      padding: 2px 5px;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 2px;
+    }
+    .agent-status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .agent-timer {
+      font-variant-numeric: tabular-nums;
+    }
+    .agent-summary {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+      text-transform: none;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* TABBED DETAIL AREA */
+    .run-details-box {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+    }
+    .tabs-header {
+      display: flex;
+      border-bottom: 1px solid var(--line);
+      background: #000000;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--line);
+      border-bottom: 2px solid transparent;
+      padding: 14px 28px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: var(--panel-hover);
+    }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: var(--panel);
+    }
+
+    .tab-content {
+      padding: 28px;
+      display: none;
+      min-height: 340px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Tab: Triage */
+    .triage-grid {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 32px;
+      align-items: center;
+    }
+    .score-ring-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      border-right: 1px solid var(--line);
+      padding-right: 32px;
+    }
+    .score-svg {
+      width: 140px;
+      height: 140px;
+      transform: rotate(-90deg);
+    }
+    .score-circle-bg {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 8;
+    }
+    .score-circle-val {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 8;
+      stroke-linecap: square;
+      stroke-dasharray: 377;
+      stroke-dashoffset: 377;
+      transition: stroke-dashoffset 1s ease;
+    }
+    .score-display-num {
+      position: absolute;
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 200;
+      color: #ffffff;
+    }
+    .triage-meta-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .meta-item-full {
+      grid-column: 1 / -1;
+    }
+    .meta-title {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+    .meta-value {
+      font-size: 13px;
+      color: #ffffff;
+      text-transform: none;
+    }
+    .suspected-files-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .file-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      background: #000;
+      border: 1px solid var(--line);
+      color: var(--accent);
+      border-radius: 2px;
+    }
+
+    /* Tab: Diff */
+    .diff-container {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      background: #000000;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .diff-file-header {
+      padding: 10px 16px;
+      background: #0a0c0e;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .diff-lines-wrap {
+      overflow-x: auto;
+    }
+    .diff-line {
+      display: flex;
+      padding: 2px 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .diff-line-num {
+      width: 48px;
+      color: var(--muted);
+      user-select: none;
+      flex-shrink: 0;
+      text-align: right;
+      padding-right: 16px;
+    }
+    .diff-line-code {
+      flex: 1;
+      text-transform: none;
+    }
+    .diff-add {
+      background: var(--diff-add-bg);
+      color: var(--diff-add-text);
+    }
+    .diff-del {
+      background: var(--diff-del-bg);
+      color: var(--diff-del-text);
+    }
+    .diff-hunk {
+      background: #101418;
+      color: var(--muted);
+    }
+
+    /* Tab: Tests */
+    .tests-tab-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .tests-counts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .test-count-box {
+      border: 1px solid var(--line);
+      background: #000000;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .test-box-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+    }
+    .test-box-val {
+      font-size: 20px;
+      color: #ffffff;
+      font-family: var(--font-display);
+      font-weight: 300;
+      display: flex;
+      gap: 16px;
+      align-items: baseline;
+    }
+    .passed-badge { color: var(--status-done); }
+    .failed-badge { color: var(--status-failed); }
+
+    .fixed-tests-box {
+      border: 1px solid var(--line);
+      background: #000000;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .log-tail-box {
+      border: 1px solid var(--line);
+      background: #000000;
+    }
+    .log-tail-header {
+      padding: 10px 16px;
+      background: #0a0c0e;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .log-tail-content {
+      padding: 16px;
+      color: #b0b8c0;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      text-transform: none;
+      line-height: 1.6;
+    }
+
+    /* Tab: Review */
+    .review-tab-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .verdict-banner {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      border: 1px solid var(--status-done);
+      background: rgba(126, 231, 135, 0.05);
+    }
+    .verdict-banner.rejected {
+      border-color: var(--status-failed);
+      background: rgba(255, 107, 107, 0.05);
+    }
+    .flags-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .flag-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--text);
+      text-transform: none;
+    }
+
+    /* FINAL PULL REQUEST BLOCK */
+    .final-pr-block {
+      border: 1px solid var(--accent);
+      background: rgba(61, 232, 208, 0.03);
+      padding: 24px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+    }
+    .pr-block-info {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pr-opened-title {
+      color: var(--accent);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+    }
+    .pr-disclaimer {
+      color: #ffffff;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    .pr-link-btn {
+      padding: 12px 24px;
+      border: 1px solid var(--accent);
+      color: #000000;
+      background: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.25s, color 0.25s;
+    }
+    .pr-link-btn:hover {
+      background: #ffffff;
+      border-color: #ffffff;
+      color: #000000;
+    }
+
+    /* Simulation Controller Bar */
+    .sim-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #000000;
+      border: 1px solid var(--line);
+      padding: 8px 16px;
+    }
+
+    /* Skeletons */
+    .skeleton-line {
+      height: 12px;
+      background: linear-gradient(90deg, #101418 25%, #1c2228 50%, #101418 75%);
+      background-size: 200% 100%;
+      animation: skeletonShimmer 1.5s infinite;
+      border-radius: 2px;
+    }
+    @keyframes skeletonShimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ==========================================================================
+       RESPONSIVENESS (<= 1100px and <= 760px)
+       ========================================================================== */
+    @media (max-width: 1100px) {
+      .stat-blocks-row {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .pipeline-container {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+      }
+      .pipeline-card {
+        padding: 12px;
+      }
+      #view-login {
+        padding: 24px 32px;
+      }
+      .login-panel {
+        width: min(44vw, 560px);
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        overflow-y: auto;
+      }
+      #view-login {
+        padding: 20px;
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+      .login-nav {
+        display: none;
+      }
+      .menu-toggle {
+        display: block;
+      }
+      .login-body {
+        padding-right: 0;
+        margin: 40px 0;
+      }
+      .login-panel {
+        width: 100%;
+        min-width: unset;
+        padding: 28px 20px;
+      }
+
+      /* Dashboard Left rail hidden behind drawer */
+      .left-rail {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        transform: translateX(-100%);
+        box-shadow: 10px 0 30px rgba(0,0,0,0.8);
+      }
+      .left-rail.open {
+        transform: translateX(0);
+      }
+      .runs-drawer-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        cursor: pointer;
+      }
+      .dashboard-main {
+        padding: 20px;
+      }
+      .stat-blocks-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .run-inputs-row {
+        flex-direction: column;
+      }
+      .run-input-short {
+        max-width: 100%;
+      }
+
+      /* Run pipeline vertical stack */
+      #view-run {
+        padding: 20px;
+      }
+      .pipeline-container {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .pipeline-connector-line {
+        display: none;
+      }
+      .triage-grid {
+        grid-template-columns: 1fr;
+      }
+      .score-ring-wrap {
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+        padding-right: 0;
+        padding-bottom: 24px;
+      }
+      .tests-counts-row {
+        grid-template-columns: 1fr;
+      }
+      .final-pr-block {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Three.js Background Canvas -->
+  <div id="bg-canvas-container" class="interactive" aria-hidden="true">
+    <div class="fallback-bg" id="fallback-bg"></div>
+  </div>
+
+  <!-- Mobile Menu Overlay for Login View -->
+  <div class="mobile-menu-overlay" id="mobile-menu">
+    <button class="mobile-close-btn" id="mobile-close-btn" aria-label="Close navigation menu">CLOSE [X]</button>
+    <a href="#/dashboard" class="login-nav-link" style="font-size: 16px;">HOW IT WORKS</a>
+    <a href="#/dashboard" class="login-nav-link" style="font-size: 16px;">AGENTS</a>
+    <a href="#/dashboard" class="login-nav-link" style="font-size: 16px;">SANDBOX</a>
+    <a href="#/dashboard" class="login-nav-link" style="font-size: 16px; color: var(--accent);">DASHBOARD &rarr;</a>
+  </div>
+
+  <!-- App Main Content Container -->
+  <div id="app" role="main">
+
+    <!-- ====================================================================
+         VIEW 1: #/login
+         ==================================================================== -->
+    <div id="view-login" class="view-container">
+      <header class="login-header">
+        <div class="brand-mark">
+          <div class="cube-icon" aria-hidden="true"></div>
+          <div class="brand-text">
+            <span class="brand-name">REPOCREW</span>
+            <span class="brand-subtitle">AI JUNIOR MAINTAINER</span>
+          </div>
+        </div>
+
+        <nav class="login-nav" aria-label="Main Navigation">
+          <a class="login-nav-link" onclick="routeToDashboardDemo('HOW_IT_WORKS')">HOW IT WORKS</a>
+          <a class="login-nav-link" onclick="routeToDashboardDemo('AGENTS')">AGENTS</a>
+          <a class="login-nav-link" onclick="routeToDashboardDemo('SANDBOX')">SANDBOX</a>
+          <a class="login-nav-link" href="#/dashboard">DASHBOARD</a>
+          <a class="btn login-nav-btn" href="#/dashboard">GET STARTED</a>
+        </nav>
+
+        <button class="menu-toggle" id="menu-toggle-btn" aria-label="Open navigation menu">MENU</button>
+      </header>
+
+      <section class="login-body">
+        <div class="login-panel">
+          <div class="chip">[ MAINTAINER ACCESS ]</div>
+          <h1 class="login-panel-title">REPOCREW</h1>
+          <p class="login-tagline">YOUR AI JUNIOR MAINTAINER FOR GITHUB.</p>
+
+          <form class="login-form" id="login-form" onsubmit="handleEmailLogin(event)">
+            <div class="email-input-wrap">
+              <label for="login-email" class="sr-only" style="display:none;">Work Email</label>
+              <input type="email" id="login-email" class="email-input" placeholder="ENTER WORK EMAIL..." autocomplete="email" />
+              <div class="email-error" id="email-error">PLEASE ENTER A VALID WORK EMAIL</div>
+            </div>
+
+            <div class="login-actions">
+              <button type="submit" class="btn">CONTINUE WITH EMAIL</button>
+              <button type="button" class="btn btn-solid" onclick="handleDemoLogin('github')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                CONTINUE WITH GITHUB
+              </button>
+              <a class="demo-access-link" onclick="handleDemoLogin('guest')">USE DEMO ACCESS</a>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <footer class="login-footer">
+        SIGNING IN MEANS YOU ACCEPT OUR PRIVACY NOTICE AND TERMS. REPOCREW OPENS PULL REQUESTS, BUT <strong>A HUMAN ALWAYS MAKES THE FINAL MERGE DECISION.</strong>
+      </footer>
+    </div>
+
+    <!-- ====================================================================
+         VIEW 2: #/dashboard
+         ==================================================================== -->
+    <div id="view-dashboard" class="view-container">
+      <!-- Left Rail (320px) -->
+      <aside class="left-rail" id="dashboard-left-rail" aria-label="Run History">
+        <div class="rail-header">
+          <div class="brand-mark">
+            <div class="cube-icon" aria-hidden="true"></div>
+            <span class="brand-name">REPOCREW</span>
+          </div>
+          <span class="chip" style="font-size: 9px;">MAINTAINER</span>
+        </div>
+
+        <div class="filter-chips-row" role="group" aria-label="Filter runs">
+          <button class="filter-chip active" data-filter="all" onclick="applyRunFilter('all')">ALL</button>
+          <button class="filter-chip" data-filter="working" onclick="applyRunFilter('working')">WORKING</button>
+          <button class="filter-chip" data-filter="done" onclick="applyRunFilter('done')">DONE</button>
+          <button class="filter-chip" data-filter="failed" onclick="applyRunFilter('failed')">FAILED</button>
+          <button class="filter-chip" data-filter="skipped" onclick="applyRunFilter('skipped')">SKIPPED</button>
+        </div>
+
+        <div class="runs-column" id="runs-list-column">
+          <!-- Populated by JS -->
+        </div>
+      </aside>
+
+      <!-- Main Dashboard Area -->
+      <main class="dashboard-main">
+        <div class="dashboard-top-bar">
+          <div class="dash-title-group">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <button class="runs-drawer-btn" id="drawer-toggle-btn" onclick="toggleRunsDrawer()">RUNS [ &plusmn; ]</button>
+              <h1>MAINTAINER OVERVIEW</h1>
+            </div>
+            <p>AUTONOMOUS ISSUE TRIAGE &bull; ISOLATED TESTING &bull; CODE REVIEW</p>
+          </div>
+
+          <div class="dash-top-actions">
+            <div class="runs-today-counter" title="Total runs dispatched today">
+              <span class="counter-val" id="runs-today-num">14</span>
+              <span class="counter-lbl">TODAY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 Stat Blocks with Count-up Animation -->
+        <section class="stat-blocks-row" aria-label="Maintainer Statistics">
+          <div class="stat-block">
+            <span class="stat-label">RECEIVED</span>
+            <span class="stat-num count-up" data-target="24">0</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">FIXED</span>
+            <span class="stat-num count-up" data-target="18">0</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">SKIPPED</span>
+            <span class="stat-num count-up" data-target="4">0</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">FAILED</span>
+            <span class="stat-num count-up" data-target="2">0</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">AVG TIME TO PR</span>
+            <span class="stat-num count-up" data-target="84" data-suffix="s">0s</span>
+          </div>
+        </section>
+
+        <!-- RUN ON AN ISSUE Box -->
+        <section class="run-box-panel">
+          <div class="run-box-header">
+            <span class="run-box-title">RUN ON AN ISSUE</span>
+            <span class="chip" style="font-size:10px;">DISPATCH AI CREW</span>
+          </div>
+          <form class="run-inputs-row" onsubmit="handleTriggerRun(event)">
+            <input type="text" id="input-repo" class="run-input" placeholder="REPOSITORY (e.g. repocrew/miniutils)" value="repocrew/miniutils" required />
+            <input type="number" id="input-issue" class="run-input run-input-short" placeholder="ISSUE #" value="105" required />
+            <button type="submit" class="btn btn-solid" style="padding: 10px 24px;">RUN &rarr;</button>
+          </form>
+        </section>
+
+        <!-- Compact Table of Recent Runs -->
+        <section style="display:flex; flex-direction:column; gap:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; color:var(--muted); letter-spacing:0.08em;">RECENT RUNS DISPATCHED</span>
+            <span class="chip" style="font-size:10px;">SWE-BENCH VERIFIED</span>
+          </div>
+
+          <div class="table-container">
+            <table class="runs-table">
+              <thead>
+                <tr>
+                  <th>RUN ID</th>
+                  <th>REPO</th>
+                  <th>ISSUE</th>
+                  <th>STATUS</th>
+                  <th>ATTEMPTS</th>
+                  <th>TIME</th>
+                  <th>PR</th>
+                </tr>
+              </thead>
+              <tbody id="recent-runs-tbody">
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ====================================================================
+         VIEW 3: #/run/:id (HERO DEMO VIEW)
+         ==================================================================== -->
+    <div id="view-run" class="view-container">
+      <!-- Run Header -->
+      <header class="run-page-header">
+        <div class="run-header-left">
+          <a class="run-back-link" href="#/dashboard">&larr; DASHBOARD</a>
+          <div class="run-issue-title-row">
+            <h1 class="run-issue-title" id="run-title">date_range() off-by-one: omits end_date when inclusive=True</h1>
+            <span class="run-issue-num" id="run-issue-num">#101</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span class="run-repo-badge" id="run-repo">repocrew/miniutils</span>
+            <span class="chip" id="run-overall-status">
+              <span class="status-dot dot-working"></span> WORKING
+            </span>
+          </div>
+        </div>
+
+        <div class="run-header-actions">
+          <div class="sim-controls">
+            <span style="font-size:10px; color:var(--muted);">SIMULATION:</span>
+            <button class="btn btn-accent" style="padding: 5px 12px; font-size:10px;" onclick="restartSimulation()">RE-SIMULATE</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- 5-Agent Horizontal Pipeline -->
+      <section class="pipeline-wrapper" aria-label="Agent Pipeline Progress">
+        <div class="pipeline-connector-line"></div>
+        <div class="animated-stream" id="animated-stream-line"></div>
+
+        <div class="pipeline-container">
+          <!-- Agent 1: Triage -->
+          <div class="pipeline-card" id="agent-card-triage">
+            <div class="agent-card-header">
+              <span class="agent-name">TRIAGE</span>
+              <span class="status-dot dot-waiting" id="dot-triage"></span>
+            </div>
+            <div class="agent-status-row">
+              <span id="label-triage">WAITING</span>
+              <span class="agent-timer" id="timer-triage">00.0s</span>
+            </div>
+            <div class="agent-summary" id="summary-triage">Classifying issue, calculating scope &amp; safety risk...</div>
+          </div>
+
+          <!-- Agent 2: Coder -->
+          <div class="pipeline-card" id="agent-card-coder">
+            <div class="agent-card-header">
+              <span class="agent-name">CODER</span>
+              <span class="attempt-tag" id="tag-coder-attempt" style="display:none;">ATTEMPT 1/3</span>
+              <span class="status-dot dot-waiting" id="dot-coder"></span>
+            </div>
+            <div class="agent-status-row">
+              <span id="label-coder">WAITING</span>
+              <span class="agent-timer" id="timer-coder">00.0s</span>
+            </div>
+            <div class="agent-summary" id="summary-coder">Generating minimal patch without side-effects...</div>
+          </div>
+
+          <!-- Agent 3: Tester -->
+          <div class="pipeline-card" id="agent-card-tester">
+            <div class="agent-card-header">
+              <span class="agent-name">TESTER</span>
+              <span class="attempt-tag" id="tag-tester-attempt" style="display:none;">ATTEMPT 1/3</span>
+              <span class="status-dot dot-waiting" id="dot-tester"></span>
+            </div>
+            <div class="agent-status-row">
+              <span id="label-tester">WAITING</span>
+              <span class="agent-timer" id="timer-tester">00.0s</span>
+            </div>
+            <div class="agent-summary" id="summary-tester">Running pytest in network-isolated Docker sandbox...</div>
+          </div>
+
+          <!-- Agent 4: Reviewer -->
+          <div class="pipeline-card" id="agent-card-reviewer">
+            <div class="agent-card-header">
+              <span class="agent-name">REVIEWER</span>
+              <span class="status-dot dot-waiting" id="dot-reviewer"></span>
+            </div>
+            <div class="agent-status-row">
+              <span id="label-reviewer">WAITING</span>
+              <span class="agent-timer" id="timer-reviewer">00.0s</span>
+            </div>
+            <div class="agent-summary" id="summary-reviewer">Auditing diff for safety gate violations &amp; regressions...</div>
+          </div>
+
+          <!-- Agent 5: PR -->
+          <div class="pipeline-card" id="agent-card-pr">
+            <div class="agent-card-header">
+              <span class="agent-name">PR</span>
+              <span class="status-dot dot-waiting" id="dot-pr"></span>
+            </div>
+            <div class="agent-status-row">
+              <span id="label-pr">WAITING</span>
+              <span class="agent-timer" id="timer-pr">00.0s</span>
+            </div>
+            <div class="agent-summary" id="summary-pr">Publishing branch &amp; ready for human merge evaluation.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabbed Detail Area -->
+      <section class="run-details-box">
+        <div class="tabs-header" role="tablist">
+          <button class="tab-btn active" role="tab" aria-selected="true" data-tab="tab-triage" onclick="switchDetailTab('tab-triage')">TRIAGE</button>
+          <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-diff" onclick="switchDetailTab('tab-diff')">DIFF</button>
+          <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-tests" onclick="switchDetailTab('tab-tests')">TESTS</button>
+          <button class="tab-btn" role="tab" aria-selected="false" data-tab="tab-review" onclick="switchDetailTab('tab-review')">REVIEW</button>
+        </div>
+
+        <!-- Detail Tab 1: TRIAGE -->
+        <div class="tab-content active" id="tab-triage" role="tabpanel">
+          <div class="triage-grid">
+            <div class="score-ring-wrap">
+              <div style="position:relative; display:grid; place-items:center;">
+                <svg class="score-svg" viewBox="0 0 140 140">
+                  <circle class="score-circle-bg" cx="70" cy="70" r="60"></circle>
+                  <circle class="score-circle-val" id="triage-ring-val" cx="70" cy="70" r="60"></circle>
+                </svg>
+                <div class="score-display-num" id="triage-score-text">94</div>
+              </div>
+              <span style="font-size:10px; color:var(--muted); letter-spacing:0.08em;">FEASIBILITY SCORE</span>
+            </div>
+
+            <div class="triage-meta-list">
+              <div class="meta-item">
+                <span class="meta-title">CATEGORY</span>
+                <span class="meta-value" id="triage-category">LOGIC_BUG</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-title">SCOPE ASSESSMENT</span>
+                <span class="meta-value" id="triage-scope">IN_SCOPE</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-title">SECURITY RISK</span>
+                <span class="meta-value" id="triage-risk">LOW (NO PERMISSION CHANGES)</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-title">SUSPECTED FILES</span>
+                <div class="suspected-files-list" id="triage-files">
+                  <span class="file-chip">miniutils/dates.py</span>
+                </div>
+              </div>
+              <div class="meta-item meta-item-full">
+                <span class="meta-title">REASONING &amp; TRAJECTORY</span>
+                <p class="meta-value" id="triage-reason" style="line-height:1.6; color:#c6ccd2;">
+                  Issue cleanly isolates an off-by-one boundary failure in date generator loop.
+                  Reproducible with single unit test assertion. Scope verified as self-contained utility modification.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail Tab 2: DIFF -->
+        <div class="tab-content" id="tab-diff" role="tabpanel">
+          <div class="diff-container" id="diff-viewer">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Detail Tab 3: TESTS -->
+        <div class="tab-content" id="tab-tests" role="tabpanel">
+          <div class="tests-tab-layout">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; color:var(--muted); letter-spacing:0.08em;">DOCKER PYTEST SUITE</span>
+              <span class="chip" style="color:var(--accent); border-color:var(--accent);">NO NETWORK SANDBOX</span>
+            </div>
+
+            <div class="tests-counts-row">
+              <div class="test-count-box">
+                <span class="test-box-label">BEFORE PATCH (BASELINE)</span>
+                <div class="test-box-val" id="tests-before-val">
+                  <span class="passed-badge">11 PASSED</span>
+                  <span class="failed-badge">1 FAILED</span>
+                </div>
+              </div>
+              <div class="test-count-box">
+                <span class="test-box-label">AFTER PATCH (SANDBOX RUN)</span>
+                <div class="test-box-val" id="tests-after-val">
+                  <span class="passed-badge">12 PASSED</span>
+                  <span style="color:var(--muted);">0 FAILED</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="fixed-tests-box">
+              <span class="meta-title">FIXED TEST ASSERTIONS</span>
+              <div id="fixed-tests-list" style="color:var(--status-done); font-size:12px; font-family:var(--font-mono); text-transform:none;">
+                &check; tests/test_dates.py::test_date_range_inclusive_boundary
+              </div>
+            </div>
+
+            <div class="log-tail-box">
+              <div class="log-tail-header" onclick="toggleLogTail()">
+                <span>PYTEST LOG TAIL (SANDBOX EXECUTION)</span>
+                <span id="log-toggle-icon">[ COLLAPSE - ]</span>
+              </div>
+              <pre class="log-tail-content" id="tests-log-tail"></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail Tab 4: REVIEW -->
+        <div class="tab-content" id="tab-review" role="tabpanel">
+          <div class="review-tab-layout">
+            <div class="verdict-banner" id="review-verdict-banner">
+              <span class="status-dot dot-done" id="review-dot"></span>
+              <div>
+                <div style="font-weight:600; font-size:13px; color:#ffffff;" id="review-verdict-text">VERDICT: APPROVE</div>
+                <div style="font-size:11px; color:var(--muted); text-transform:none; margin-top:2px;">Safe for human maintainer review &amp; merge consideration.</div>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px;">
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <span class="meta-title">SAFETY GATE CHECKS</span>
+                <div class="flags-list" id="review-flags-list">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <span class="meta-title">AGENT REVIEW NOTE</span>
+                <div style="border:1px solid var(--line); background:#000; padding:16px; font-size:11px; line-height:1.6; text-transform:none; color:#c6ccd2;" id="review-pr-note">
+                  Patch strictly addresses date boundary comparison flaw without expanding library API surface.
+                  All regression suites in isolated container pass without warning flags.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Final PR Opened Block (NO MERGE BUTTON) -->
+      <section class="final-pr-block" id="final-pr-container">
+        <div class="pr-block-info">
+          <div class="pr-opened-title" id="pr-opened-title">PULL REQUEST #214 OPENED</div>
+          <div class="pr-disclaimer">
+            RepoCrew opened this. A human decides whether it merges.
+          </div>
+        </div>
+        <a id="pr-external-btn" class="pr-link-btn" href="https://github.com/repocrew/miniutils/pull/214" target="_blank" rel="noopener noreferrer">
+          VIEW PULL REQUEST &rarr;
+        </a>
+      </section>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       SCRIPTS: THREE.JS, DATA, ROUTER, SIMULATION
+       ==================================================================== -->
+  <script>
+    /* ==========================================================================
+       FLAG FOR MOCK DATA / API SWITCH (off for production by default, on when flagged)
+       ========================================================================== */
+    const _urlParams = new URLSearchParams(window.location.search);
+    const USE_MOCK = _urlParams.has("mock")
+      ? _urlParams.get("mock") === "true"
+      : (window.RC_USE_MOCK !== undefined ? Boolean(window.RC_USE_MOCK) : false);
+    const API_BASE = window.RC_API_URL || "";
+
+    /* ==========================================================================
+       MOCK DATA: PRESET RUNS MATCHING SPECIFICATION
+       ========================================================================== */
+    const MOCK_RUNS = [
+      {
+        id: 101,
+        repo: "repocrew/miniutils",
+        issue_number: 101,
+        issue_title: "date_range() off-by-one: omits end_date when inclusive=True",
+        status: "done",
+        attempts: "1/3",
+        pr_url: "https://github.com/repocrew/miniutils/pull/214",
+        created_at: "2026-11-02T10:14:00Z",
+        finished_at: "2026-11-02T10:14:10Z"
+      },
+      {
+        id: 102,
+        repo: "repocrew/miniutils",
+        issue_number: 102,
+        issue_title: "paginate() drops the last page on non-divisible length",
+        status: "done",
+        attempts: "2/3",
+        pr_url: "https://github.com/repocrew/miniutils/pull/215",
+        created_at: "2026-11-02T09:30:00Z",
+        finished_at: "2026-11-02T09:30:14Z"
+      },
+      {
+        id: 103,
+        repo: "repocrew/miniutils",
+        issue_number: 103,
+        issue_title: "Rewrite the whole utility framework in Rust pyo3",
+        status: "skipped",
+        attempts: "0/3",
+        pr_url: null,
+        created_at: "2026-11-02T08:15:00Z",
+        finished_at: "2026-11-02T08:15:02Z"
+      },
+      {
+        id: 104,
+        repo: "repocrew/miniutils",
+        issue_number: 104,
+        issue_title: "average() crashes with ZeroDivisionError on empty list",
+        status: "done",
+        attempts: "1/3",
+        pr_url: "https://github.com/repocrew/miniutils/pull/216",
+        created_at: "2026-11-02T07:40:00Z",
+        finished_at: "2026-11-02T07:40:09Z"
+      },
+      {
+        id: 105,
+        repo: "repocrew/miniutils",
+        issue_number: 105,
+        issue_title: "slugify() leaves trailing hyphens on special characters",
+        status: "working",
+        attempts: "1/3",
+        pr_url: null,
+        created_at: "2026-11-02T11:00:00Z",
+        finished_at: null
+      }
+    ];
+
+    // Detailed events & payloads per run
+    const MOCK_RUN_DETAILS = {
+      101: {
+        run: MOCK_RUNS[0],
+        payloads: {
+          triage: {
+            category: "LOGIC_BUG",
+            scope: "IN_SCOPE",
+            risk: "LOW (NO PERMISSION CHANGES)",
+            score: 94,
+            suspected_files: ["miniutils/dates.py"],
+            reason: "Clear off-by-one boundary flaw in date generator generator. Self-contained inside utility function, no API breaking changes, existing test harness in place."
+          },
+          coder: {
+            edits: [
+              {
+                file: "miniutils/dates.py",
+                old_snippet: `def date_range(start, end, step=timedelta(days=1), inclusive=False):
+    current = start
+    while current < end:
+        yield current
+        current += step`,
+                new_snippet: `def date_range(start, end, step=timedelta(days=1), inclusive=False):
+    current = start
+    stop_cond = (lambda d: d <= end) if inclusive else (lambda d: d < end)
+    while stop_cond(current):
+        yield current
+        current += step`
+              }
+            ],
+            root_cause: "The while loop boundary condition in date_range() evaluated current < end strictly, discarding the terminal date when inclusive=True was requested.",
+            explanation: "Added conditional boundary lambda stop_cond to evaluate inclusive vs strict inequality. Generator memory efficiency preserved."
+          },
+          tester: {
+            before: { passed: 11, failed: 1 },
+            after: { passed: 12, failed: 0 },
+            fixed_tests: ["tests/test_dates.py::test_date_range_inclusive_boundary"],
+            new_failures: [],
+            log_tail: `============================= test session starts ==============================
+platform linux -- Python 3.11.8, pytest-8.1.1, pluggy-1.4.0
+rootdir: /sandbox/sample_repo
+collected 12 items
+
+tests/test_average.py ..                                                 [ 16%]
+tests/test_paginate.py ...                                               [ 41%]
+tests/test_slugify.py ..                                                 [ 58%]
+tests/test_dates.py .....                                                [100%]
+
+============================== 12 passed in 0.19s ==============================
+Sandbox: Docker container c8f921a (network: none, memory: 256MB, CPU: 0.5, read-only)`,
+            duration_s: 3.2
+          },
+          reviewer: {
+            verdict: "APPROVE",
+            risk_flags: [
+              "0 safety gate violations",
+              "Zero network dependencies introduced",
+              "No touched CI / workflow files",
+              "100% test coverage delta on modified paths"
+            ],
+            reasons: [
+              "The fix strictly addresses issue #101 without side-effects",
+              "Inclusive boundary semantics match standard library datetime conventions",
+              "Pytest suite passed completely in isolated container with network disabled"
+            ],
+            pr_note: "Fixes #101 by ensuring date_range generator respects inclusive=True parameter. All 12 unit tests pass in isolated sandbox without regressions."
+          }
+        }
+      },
+
+      102: {
+        run: MOCK_RUNS[1],
+        payloads: {
+          triage: {
+            category: "ALGORITHM_DEFECT",
+            scope: "IN_SCOPE",
+            risk: "LOW",
+            score: 88,
+            suspected_files: ["miniutils/__init__.py"],
+            reason: "Pagination slice boundary calculation drops trailing items when length % page_size != 0."
+          },
+          coder: {
+            edits: [
+              {
+                file: "miniutils/__init__.py",
+                old_snippet: `def paginate(items, page_size):
+    if page_size <= 0:
+        raise ValueError("page_size must be positive")
+    return [items[i:i + page_size] for i in range(0, len(items) - page_size + 1, page_size)]`,
+                new_snippet: `def paginate(items, page_size):
+    if page_size <= 0:
+        raise ValueError("page_size must be positive")
+    return [items[i:i + page_size] for i in range(0, len(items), page_size)]`
+              }
+            ],
+            root_cause: "Subtracted page_size in range stop parameter which truncated final partial chunks.",
+            explanation: "Removed len(items) - page_size + 1 offset; Python slice semantics naturally handle partial terminal slices."
+          },
+          tester: {
+            before: { passed: 13, failed: 1 },
+            after: { passed: 14, failed: 0 },
+            fixed_tests: ["tests/test_paginate.py::test_paginate_trailing_page"],
+            new_failures: [],
+            log_tail: `=== ATTEMPT 1: FAILED (AssertionError: 3 pages != 4 pages)
+=== RE-TRYING WITH FEEDBACK LOOP (ATTEMPT 2/3)...
+============================== 14 passed in 0.22s ==============================
+Sandbox: Docker container e11d9a2 (network: none, memory: 256MB)`,
+            duration_s: 4.1
+          },
+          reviewer: {
+            verdict: "APPROVE",
+            risk_flags: [
+              "Resolved on attempt 2/3 after test feedback",
+              "No regressions introduced",
+              "Standard slice semantics"
+            ],
+            reasons: [
+              "Coder adapted correctly to pytest failure output",
+              "Final page chunk retention matches specification"
+            ],
+            pr_note: "Fixes #102 pagination boundary truncation after 1 feedback iteration."
+          }
+        }
+      },
+
+      103: {
+        run: MOCK_RUNS[2],
+        payloads: {
+          triage: {
+            category: "ARCHITECTURE_OVERHAUL",
+            scope: "OUT_OF_SCOPE",
+            risk: "HIGH (UNCONSTRAINED SCOPE)",
+            score: 14,
+            suspected_files: ["Cargo.toml", "pyproject.toml"],
+            reason: "Request proposes multi-subsystem architecture rewrite violating repository maintenance scope. AI junior maintainer policy rejects unconstrained language re-implementations to prevent stability regressions. Marked OUT_OF_SCOPE."
+          },
+          coder: {
+            edits: [],
+            root_cause: "Out of scope request",
+            explanation: "No code modifications generated for rejected triage."
+          },
+          tester: {
+            before: { passed: 14, failed: 0 },
+            after: { passed: 14, failed: 0 },
+            fixed_tests: [],
+            new_failures: [],
+            log_tail: "Execution skipped by Triage safety gate.",
+            duration_s: 0.0
+          },
+          reviewer: {
+            verdict: "REJECT",
+            risk_flags: [
+              "Flagged as OUT_OF_SCOPE by Triage agent",
+              "Safety policy block: Full codebase rewrite"
+            ],
+            reasons: ["Human maintainer intervention needed for architectural RFCs."],
+            pr_note: "No PR opened. Automated triage comment posted on issue #103."
+          }
+        }
+      },
+
+      104: {
+        run: MOCK_RUNS[3],
+        payloads: {
+          triage: {
+            category: "CRASH_DEFECT",
+            scope: "IN_SCOPE",
+            risk: "LOW",
+            score: 96,
+            suspected_files: ["miniutils/__init__.py"],
+            reason: "average() lacks zero-length check, throwing ZeroDivisionError."
+          },
+          coder: {
+            edits: [
+              {
+                file: "miniutils/__init__.py",
+                old_snippet: `def average(nums):
+    return sum(nums) / len(nums)`,
+                new_snippet: `def average(nums):
+    if not nums:
+        return 0.0
+    return sum(nums) / len(nums)`
+              }
+            ],
+            root_cause: "len(nums) == 0 causing division by zero.",
+            explanation: "Added empty collection check returning 0.0 float default."
+          },
+          tester: {
+            before: { passed: 14, failed: 1 },
+            after: { passed: 15, failed: 0 },
+            fixed_tests: ["tests/test_average.py::test_average_empty_list"],
+            new_failures: [],
+            log_tail: "============================== 15 passed in 0.16s ==============================",
+            duration_s: 2.8
+          },
+          reviewer: {
+            verdict: "APPROVE",
+            risk_flags: ["0 safety gate violations", "Clean numeric default"],
+            reasons: ["ZeroDivisionError mitigated cleanly."],
+            pr_note: "Fixes #104 by handling empty collections in average()."
+          }
+        }
+      },
+
+      105: {
+        run: MOCK_RUNS[4],
+        payloads: {
+          triage: {
+            category: "STRING_MANIPULATION",
+            scope: "IN_SCOPE",
+            risk: "LOW",
+            score: 91,
+            suspected_files: ["miniutils/__init__.py"],
+            reason: "slugify regex leaves trailing hyphen delimiters on special characters."
+          },
+          coder: {
+            edits: [
+              {
+                file: "miniutils/__init__.py",
+                old_snippet: `def slugify(text):
+    text = text.strip().lower()
+    return re.sub(r"[^a-z0-9]+", "-", text)`,
+                new_snippet: `def slugify(text):
+    text = text.strip().lower()
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")`
+              }
+            ],
+            root_cause: "re.sub substitutes non-alphanumeric trailing chars with '-' without strip('-').",
+            explanation: "Appended .strip('-') to trim leading and trailing hyphens from generated slug."
+          },
+          tester: {
+            before: { passed: 15, failed: 1 },
+            after: { passed: 16, failed: 0 },
+            fixed_tests: ["tests/test_slugify.py::test_slugify_trailing_symbols"],
+            new_failures: [],
+            log_tail: "============================== 16 passed in 0.18s ==============================",
+            duration_s: 3.0
+          },
+          reviewer: {
+            verdict: "APPROVE",
+            risk_flags: ["0 safety gate violations", "Pure string utility fix"],
+            reasons: ["Trailing hyphen removed without breaking existing slug slugs."],
+            pr_note: "Fixes #105 by stripping trailing hyphens in slugify()."
+          }
+        }
+      }
+    };
+
+    /* ==========================================================================
+       THREE.JS PARTICLES BACKGROUND
+       ========================================================================== */
+    let scene, camera, renderer, particlesMesh;
+    let particlePositions, basePositions, velocities;
+    let particleCount = 40000;
+    let mouse = { x: 0, y: 0, targetX: 0, targetY: 0, normX: 0, normY: 0 };
+    let clock;
+    let threeInitialized = false;
+
+    function initThree() {
+      // Check prefers-reduced-motion
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.getElementById('fallback-bg').classList.add('active');
+        return;
+      }
+
+      const container = document.getElementById('bg-canvas-container');
+      const isMobile = window.innerWidth <= 768;
+      particleCount = isMobile ? 8000 : 40000;
+
+      try {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 240;
+
+        renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        clock = new THREE.Clock();
+
+        // Build Particle Cloud (Cube + 4 orbiting crew clusters)
+        const geometry = new THREE.BufferGeometry();
+        particlePositions = new Float32Array(particleCount * 3);
+        basePositions = new Float32Array(particleCount * 3);
+        velocities = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        const cubeSize = 90;
+        const cubeParticles = Math.floor(particleCount * 0.75);
+        const clusterParticles = Math.floor((particleCount - cubeParticles) / 4);
+
+        let pIdx = 0;
+
+        // 1. Glowing Cube Points
+        for (let i = 0; i < cubeParticles; i++) {
+          // Distribute on cube faces and interior lattice
+          let x, y, z;
+          if (Math.random() > 0.3) {
+            // Surface faces
+            const face = Math.floor(Math.random() * 6);
+            const u = (Math.random() - 0.5) * cubeSize;
+            const v = (Math.random() - 0.5) * cubeSize;
+            const half = cubeSize / 2;
+            if (face === 0) { x = half; y = u; z = v; }
+            else if (face === 1) { x = -half; y = u; z = v; }
+            else if (face === 2) { x = u; y = half; z = v; }
+            else if (face === 3) { x = u; y = -half; z = v; }
+            else if (face === 4) { x = u; y = v; z = half; }
+            else { x = u; y = v; z = -half; }
+          } else {
+            // Interior volume
+            x = (Math.random() - 0.5) * cubeSize;
+            y = (Math.random() - 0.5) * cubeSize;
+            z = (Math.random() - 0.5) * cubeSize;
+          }
+
+          particlePositions[pIdx * 3] = x;
+          particlePositions[pIdx * 3 + 1] = y;
+          particlePositions[pIdx * 3 + 2] = z;
+
+          basePositions[pIdx * 3] = x;
+          basePositions[pIdx * 3 + 1] = y;
+          basePositions[pIdx * 3 + 2] = z;
+
+          // Mostly soft white-grey with sparse cyan
+          const isCyan = Math.random() < 0.12;
+          if (isCyan) {
+            colors[pIdx * 3] = 0.24;     // R
+            colors[pIdx * 3 + 1] = 0.91; // G
+            colors[pIdx * 3 + 2] = 0.82; // B
+          } else {
+            const gray = 0.45 + Math.random() * 0.45;
+            colors[pIdx * 3] = gray;
+            colors[pIdx * 3 + 1] = gray;
+            colors[pIdx * 3 + 2] = gray;
+          }
+          pIdx++;
+        }
+
+        // 2. Four Orbiting Clusters (The 4 Crew Agents)
+        const clusterRadius = 14;
+        for (let c = 0; c < 4; c++) {
+          const orbitAngle = (c * Math.PI) / 2;
+          const orbitDist = 80;
+          const cx = Math.cos(orbitAngle) * orbitDist;
+          const cy = Math.sin(orbitAngle) * orbitDist * 0.6;
+          const cz = Math.sin(orbitAngle * 2) * 20;
+
+          for (let i = 0; i < clusterParticles; i++) {
+            if (pIdx >= particleCount) break;
+            const r = Math.pow(Math.random(), 2) * clusterRadius;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            const x = cx + r * Math.sin(phi) * Math.cos(theta);
+            const y = cy + r * Math.sin(phi) * Math.sin(theta);
+            const z = cz + r * Math.cos(phi);
+
+            particlePositions[pIdx * 3] = x;
+            particlePositions[pIdx * 3 + 1] = y;
+            particlePositions[pIdx * 3 + 2] = z;
+
+            basePositions[pIdx * 3] = x;
+            basePositions[pIdx * 3 + 1] = y;
+            basePositions[pIdx * 3 + 2] = z;
+
+            // Agent cluster points are more cyan-tinted
+            const isCyan = Math.random() < 0.45;
+            if (isCyan) {
+              colors[pIdx * 3] = 0.24;
+              colors[pIdx * 3 + 1] = 0.91;
+              colors[pIdx * 3 + 2] = 0.82;
+            } else {
+              colors[pIdx * 3] = 0.7;
+              colors[pIdx * 3 + 1] = 0.75;
+              colors[pIdx * 3 + 2] = 0.8;
+            }
+            pIdx++;
+          }
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        // Create round particle texture using canvas
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 16;
+        pCanvas.height = 16;
+        const ctx = pCanvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+        gradient.addColorStop(0, 'rgba(255,255,255,1)');
+        gradient.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 16, 16);
+        const pTexture = new THREE.CanvasTexture(pCanvas);
+
+        const material = new THREE.PointsMaterial({
+          size: isMobile ? 2.5 : 2.0,
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          sizeAttenuation: true,
+          map: pTexture
+        });
+
+        particlesMesh = new THREE.Points(geometry, material);
+        scene.add(particlesMesh);
+
+        // Interaction Listeners
+        window.addEventListener('mousemove', onMouseMove, { passive: true });
+        window.addEventListener('resize', onWindowResize);
+
+        threeInitialized = true;
+        animateThree();
+      } catch (err) {
+        console.warn("WebGL initialization failed, using CSS fallback", err);
+        document.getElementById('fallback-bg').classList.add('active');
+      }
+    }
+
+    function onMouseMove(e) {
+      mouse.targetX = (e.clientX - window.innerWidth / 2);
+      mouse.targetY = (e.clientY - window.innerHeight / 2);
+      mouse.normX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.normY = -(e.clientY / window.innerHeight) * 2 + 1;
+    }
+
+    function onWindowResize() {
+      if (!threeInitialized) return;
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animateThree() {
+      requestAnimationFrame(animateThree);
+      if (!threeInitialized) return;
+
+      const delta = clock.getDelta();
+      const elapsedTime = clock.getElapsedTime();
+
+      // Camera drift with mouse
+      mouse.x += (mouse.targetX - mouse.x) * 0.05;
+      mouse.y += (mouse.targetY - mouse.y) * 0.05;
+
+      camera.position.x = mouse.x * 0.15;
+      camera.position.y = -mouse.y * 0.15;
+      camera.lookAt(0, 0, 0);
+
+      // Slow elegant rotation of particles
+      particlesMesh.rotation.y = elapsedTime * 0.08;
+      particlesMesh.rotation.x = Math.sin(elapsedTime * 0.05) * 0.12;
+
+      // Cursor particle push interaction
+      const positions = particlesMesh.geometry.attributes.position.array;
+      const mouseWorldX = mouse.normX * 80;
+      const mouseWorldY = mouse.normY * 50;
+
+      const pushRadius = 38;
+      const pushStrength = 65;
+      const returnFactor = 0.045; // ~1.5s return ease
+
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        let px = positions[i3];
+        let py = positions[i3 + 1];
+        let pz = positions[i3 + 2];
+
+        const bx = basePositions[i3];
+        const by = basePositions[i3 + 1];
+        const bz = basePositions[i3 + 2];
+
+        // Approximate 2D distance to mouse cursor plane
+        const dx = px - mouseWorldX;
+        const dy = py - mouseWorldY;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < pushRadius * pushRadius) {
+          const dist = Math.sqrt(distSq) || 0.001;
+          const force = (1 - dist / pushRadius) * pushStrength;
+          velocities[i3] += (dx / dist) * force * delta;
+          velocities[i3 + 1] += (dy / dist) * force * delta;
+          velocities[i3 + 2] += (Math.random() - 0.5) * force * delta * 0.5;
+        }
+
+        // Apply velocity + damping
+        px += velocities[i3];
+        py += velocities[i3 + 1];
+        pz += velocities[i3 + 2];
+
+        velocities[i3] *= 0.88;
+        velocities[i3 + 1] *= 0.88;
+        velocities[i3 + 2] *= 0.88;
+
+        // Ease back to base shape position
+        px += (bx - px) * returnFactor;
+        py += (by - py) * returnFactor;
+        pz += (bz - pz) * returnFactor;
+
+        positions[i3] = px;
+        positions[i3 + 1] = py;
+        positions[i3 + 2] = pz;
+      }
+
+      particlesMesh.geometry.attributes.position.needsUpdate = true;
+      renderer.render(scene, camera);
+    }
+
+    /* ==========================================================================
+       ROUTING SYSTEM (Hash Routing: #/login, #/dashboard, #/run/:id)
+       ========================================================================== */
+    let currentRoute = "";
+    let activeFilter = "all";
+    let activeRunId = 101;
+
+    function handleHashChange() {
+      const hash = window.location.hash || "#/login";
+      const parts = hash.split("/");
+      const root = parts[1] || "login";
+      const param = parts[2] || null;
+
+      if (root === "login") {
+        showView("view-login");
+        updateCanvasState("login");
+      } else if (root === "dashboard") {
+        showView("view-dashboard");
+        updateCanvasState("dashboard");
+        renderDashboard();
+      } else if (root === "run") {
+        const id = parseInt(param || "101", 10);
+        showView("view-run");
+        updateCanvasState("run");
+        loadRunDetail(id);
+      } else {
+        window.location.hash = "#/login";
+      }
+    }
+
+    function showView(viewId) {
+      document.querySelectorAll(".view-container").forEach(el => {
+        el.classList.remove("active");
+      });
+      const activeEl = document.getElementById(viewId);
+      if (activeEl) {
+        activeEl.classList.add("active");
+        window.scrollTo(0, 0);
+      }
+      currentRoute = viewId;
+    }
+
+    function updateCanvasState(route) {
+      const canvasContainer = document.getElementById("bg-canvas-container");
+      if (route === "login") {
+        canvasContainer.className = "interactive";
+      } else if (route === "dashboard") {
+        canvasContainer.className = "dimmed";
+      } else {
+        canvasContainer.className = "hidden-canvas";
+      }
+    }
+
+    /* ==========================================================================
+       LOGIN ACTIONS & AUTH SIMULATION
+       ========================================================================== */
+    function handleEmailLogin(e) {
+      e.preventDefault();
+      const emailInput = document.getElementById("login-email");
+      const errorEl = document.getElementById("email-error");
+      const val = emailInput.value.trim();
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(val)) {
+        errorEl.style.display = "block";
+        return;
+      }
+
+      errorEl.style.display = "none";
+      localStorage.setItem("repocrew_user", JSON.stringify({ email: val, mode: "maintainer" }));
+      window.location.hash = "#/dashboard";
+    }
+
+    function handleDemoLogin(kind) {
+      const user = kind === "github"
+        ? { username: "octocat", role: "maintainer", avatar: "github" }
+        : { username: "demo_maintainer", role: "guest_maintainer" };
+      localStorage.setItem("repocrew_user", JSON.stringify(user));
+      window.location.hash = "#/dashboard";
+    }
+
+    function routeToDashboardDemo(topic) {
+      window.location.hash = "#/dashboard";
+    }
+
+    // Mobile Hamburger
+    const menuToggleBtn = document.getElementById("menu-toggle-btn");
+    const mobileMenu = document.getElementById("mobile-menu");
+    const mobileCloseBtn = document.getElementById("mobile-close-btn");
+
+    if (menuToggleBtn && mobileMenu) {
+      menuToggleBtn.addEventListener("click", () => mobileMenu.classList.add("open"));
+      mobileCloseBtn.addEventListener("click", () => mobileMenu.classList.remove("open"));
+      mobileMenu.querySelectorAll("a").forEach(link => {
+        link.addEventListener("click", () => mobileMenu.classList.remove("open"));
+      });
+    }
+
+    /* ==========================================================================
+       DASHBOARD VIEW LOGIC
+       ========================================================================== */
+    function renderDashboard() {
+      renderRunCards();
+      renderRecentRunsTable();
+      animateCountUps();
+    }
+
+    function applyRunFilter(filter) {
+      activeFilter = filter;
+      document.querySelectorAll(".filter-chip").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.filter === filter);
+      });
+      renderRunCards();
+    }
+
+    function renderRunCards() {
+      const container = document.getElementById("runs-list-column");
+      container.innerHTML = "";
+
+      const filtered = MOCK_RUNS.filter(r => {
+        if (activeFilter === "all") return true;
+        return r.status.toLowerCase() === activeFilter.toLowerCase();
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div style="padding: 24px; color: var(--muted); font-size:11px;">NO RUNS MATCHING "${activeFilter.toUpperCase()}"</div>`;
+        return;
+      }
+
+      filtered.forEach(run => {
+        const card = document.createElement("div");
+        card.className = `run-card ${run.id === activeRunId ? 'selected' : ''}`;
+        card.onclick = () => {
+          window.location.hash = `#/run/${run.id}`;
+        };
+
+        const dotClass = run.status === 'working' ? 'dot-working' :
+                         run.status === 'done' ? 'dot-done' :
+                         run.status === 'failed' ? 'dot-failed' : 'dot-skipped';
+
+        card.innerHTML = `
+          <div class="run-card-header">
+            <span class="run-card-title">${escapeHtml(run.issue_title)}</span>
+            <span class="run-card-num">#${run.issue_number}</span>
+          </div>
+          <div class="run-card-meta">
+            <span>${escapeHtml(run.repo)}</span>
+            <span>${formatTimeAgo(run.created_at)}</span>
+          </div>
+          <div class="run-card-status-row">
+            <span class="chip" style="font-size:9px; padding:2px 6px;">
+              <span class="status-dot ${dotClass}"></span> ${run.status.toUpperCase()}
+            </span>
+            <span style="font-size:10px; color:var(--muted);">ATTEMPTS ${run.attempts}</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderRecentRunsTable() {
+      const tbody = document.getElementById("recent-runs-tbody");
+      tbody.innerHTML = "";
+
+      MOCK_RUNS.forEach(run => {
+        const tr = document.createElement("tr");
+        tr.onclick = () => { window.location.hash = `#/run/${run.id}`; };
+
+        const dotClass = run.status === 'working' ? 'dot-working' :
+                         run.status === 'done' ? 'dot-done' :
+                         run.status === 'failed' ? 'dot-failed' : 'dot-skipped';
+
+        const prHtml = run.pr_url
+          ? `<span style="color:var(--accent);">#${run.pr_url.split('/').pop()} &rarr;</span>`
+          : `<span style="color:var(--muted);">&mdash;</span>`;
+
+        tr.innerHTML = `
+          <td style="color:var(--muted); font-variant-numeric: tabular-nums;">#${run.id}</td>
+          <td>${escapeHtml(run.repo)}</td>
+          <td class="runs-table-title">#${run.issue_number} ${escapeHtml(run.issue_title)}</td>
+          <td>
+            <span class="chip" style="font-size:9px; padding:2px 6px;">
+              <span class="status-dot ${dotClass}"></span> ${run.status.toUpperCase()}
+            </span>
+          </td>
+          <td style="color:var(--muted);">${run.attempts}</td>
+          <td style="color:var(--muted);">${formatTimeAgo(run.created_at)}</td>
+          <td>${prHtml}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function handleTriggerRun(e) {
+      e.preventDefault();
+      const repo = document.getElementById("input-repo").value.trim();
+      const issueNum = parseInt(document.getElementById("input-issue").value.trim(), 10) || 106;
+
+      const newId = 100 + MOCK_RUNS.length + 1;
+      const newRun = {
+        id: newId,
+        repo: repo || "repocrew/miniutils",
+        issue_number: issueNum,
+        issue_title: `Live simulated fix for issue #${issueNum}`,
+        status: "working",
+        attempts: "1/3",
+        pr_url: null,
+        created_at: new Date().toISOString(),
+        finished_at: null
+      };
+
+      // Add to list and payloads
+      MOCK_RUNS.unshift(newRun);
+      MOCK_RUN_DETAILS[newId] = {
+        run: newRun,
+        payloads: {
+          triage: {
+            category: "LOGIC_BUG",
+            scope: "IN_SCOPE",
+            risk: "LOW",
+            score: 93,
+            suspected_files: ["miniutils/core.py"],
+            reason: `Automated live triage for newly ingested issue #${issueNum}. Validated isolated test harness.`
+          },
+          coder: {
+            edits: [
+              {
+                file: "miniutils/core.py",
+                old_snippet: `# Defective branch for issue #${issueNum}\nreturn calculate_legacy(val)`,
+                new_snippet: `# Corrected branch for issue #${issueNum}\nreturn calculate_isolated(val, safe=True)`
+              }
+            ],
+            root_cause: `Edge condition unhandled in issue #${issueNum}`,
+            explanation: "Constructed deterministic patch satisfying test constraints."
+          },
+          tester: {
+            before: { passed: 10, failed: 1 },
+            after: { passed: 11, failed: 0 },
+            fixed_tests: [`tests/test_core.py::test_issue_${issueNum}`],
+            new_failures: [],
+            log_tail: `=== RUNNING PYTEST IN DOCKER SANDBOX (network: none) ===\n11 passed in 0.17s`,
+            duration_s: 3.1
+          },
+          reviewer: {
+            verdict: "APPROVE",
+            risk_flags: ["0 gate violations", "Clean delta", "No workflow edits"],
+            reasons: ["Patch matches issue scope."],
+            pr_note: `Automated PR for #${issueNum}. Ready for maintainer merge review.`
+          }
+        }
+      };
+
+      // Update today counter
+      const todayEl = document.getElementById("runs-today-num");
+      if (todayEl) {
+        todayEl.innerText = (parseInt(todayEl.innerText, 10) || 14) + 1;
+      }
+
+      window.location.hash = `#/run/${newId}`;
+    }
+
+    function toggleRunsDrawer() {
+      const rail = document.getElementById("dashboard-left-rail");
+      rail.classList.toggle("open");
+    }
+
+    function animateCountUps() {
+      document.querySelectorAll(".count-up").forEach(el => {
+        const target = parseFloat(el.dataset.target) || 0;
+        const suffix = el.dataset.suffix || "";
+        const duration = 900;
+        const startTime = performance.now();
+
+        function update(now) {
+          const elapsed = now - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          // Ease-out cubic
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const current = Math.floor(eased * target);
+          el.innerText = `${current}${suffix}`;
+          if (progress < 1) {
+            requestAnimationFrame(update);
+          } else {
+            el.innerText = `${target}${suffix}`;
+          }
+        }
+        requestAnimationFrame(update);
+      });
+    }
+
+    /* ==========================================================================
+       VIEW 3: RUN DETAIL & LIVE SSE-LIKE SIMULATION
+       ========================================================================== */
+    let simulationTimer = null;
+    let simIntervals = [];
+
+    function clearActiveSimulation() {
+      if (simulationTimer) clearInterval(simulationTimer);
+      simIntervals.forEach(clearInterval);
+      simIntervals = [];
+    }
+
+    function loadRunDetail(id) {
+      activeRunId = id;
+      clearActiveSimulation();
+
+      const detail = MOCK_RUN_DETAILS[id] || MOCK_RUN_DETAILS[101];
+      const run = detail.run;
+
+      document.getElementById("run-title").innerText = run.issue_title;
+      document.getElementById("run-issue-num").innerText = `#${run.issue_number}`;
+      document.getElementById("run-repo").innerText = run.repo;
+
+      // Populate detail tabs immediately with data
+      populateDetailTabs(detail);
+
+      // If run is #103 (Skipped), show static skipped state
+      if (run.id === 103) {
+        renderSkippedRun(detail);
+        return;
+      }
+
+      // If run is 101 or 102 or newly triggered, run live SSE simulation
+      startLiveSimulation(detail);
+    }
+
+    function populateDetailTabs(detail) {
+      const p = detail.payloads;
+
+      // 1. Triage Tab
+      document.getElementById("triage-score-text").innerText = p.triage.score;
+      const offset = 377 - (377 * (p.triage.score / 100));
+      const ring = document.getElementById("triage-ring-val");
+      if (ring) {
+        ring.style.strokeDashoffset = offset;
+        ring.style.stroke = p.triage.score > 50 ? 'var(--accent)' : 'var(--status-failed)';
+      }
+      document.getElementById("triage-category").innerText = p.triage.category;
+      document.getElementById("triage-scope").innerText = p.triage.scope;
+      document.getElementById("triage-risk").innerText = p.triage.risk;
+      document.getElementById("triage-reason").innerText = p.triage.reason;
+
+      const filesWrap = document.getElementById("triage-files");
+      filesWrap.innerHTML = "";
+      p.triage.suspected_files.forEach(f => {
+        const chip = document.createElement("span");
+        chip.className = "file-chip";
+        chip.innerText = f;
+        filesWrap.appendChild(chip);
+      });
+
+      // 2. Diff Tab
+      renderDiffViewer(p.coder.edits);
+
+      // 3. Tests Tab
+      const b = p.tester.before;
+      const a = p.tester.after;
+      document.getElementById("tests-before-val").innerHTML = `
+        <span class="passed-badge">${b.passed} PASSED</span>
+        <span class="failed-badge">${b.failed} FAILED</span>
+      `;
+      document.getElementById("tests-after-val").innerHTML = `
+        <span class="passed-badge">${a.passed} PASSED</span>
+        <span style="color:var(--muted);">${a.failed} FAILED</span>
+      `;
+
+      const fixedList = document.getElementById("fixed-tests-list");
+      if (p.tester.fixed_tests.length > 0) {
+        fixedList.innerHTML = p.tester.fixed_tests.map(t => `&check; ${escapeHtml(t)}`).join("<br>");
+      } else {
+        fixedList.innerHTML = `<span style="color:var(--muted);">&mdash; NONE</span>`;
+      }
+      document.getElementById("tests-log-tail").innerText = p.tester.log_tail;
+
+      // 4. Review Tab
+      const banner = document.getElementById("review-verdict-banner");
+      const vText = document.getElementById("review-verdict-text");
+      const vDot = document.getElementById("review-dot");
+
+      if (p.reviewer.verdict === "APPROVE") {
+        banner.className = "verdict-banner";
+        vText.innerText = "VERDICT: APPROVE";
+        vDot.className = "status-dot dot-done";
+      } else {
+        banner.className = "verdict-banner rejected";
+        vText.innerText = "VERDICT: REJECT";
+        vDot.className = "status-dot dot-failed";
+      }
+
+      const flagsList = document.getElementById("review-flags-list");
+      flagsList.innerHTML = p.reviewer.risk_flags.map(flag => `
+        <div class="flag-item">
+          <span class="status-dot dot-done"></span>
+          <span>${escapeHtml(flag)}</span>
+        </div>
+      `).join("");
+
+      document.getElementById("review-pr-note").innerText = p.reviewer.pr_note;
+
+      // Final PR Block
+      const prBlock = document.getElementById("final-pr-container");
+      const prTitle = document.getElementById("pr-opened-title");
+      const prBtn = document.getElementById("pr-external-btn");
+
+      if (detail.run.pr_url) {
+        prBlock.style.display = "flex";
+        const prNumber = detail.run.pr_url.split("/").pop();
+        prTitle.innerText = `PULL REQUEST #${prNumber} OPENED`;
+        prBtn.href = detail.run.pr_url;
+      } else {
+        prBlock.style.display = "none";
+      }
+    }
+
+    function renderDiffViewer(edits) {
+      const viewer = document.getElementById("diff-viewer");
+      viewer.innerHTML = "";
+
+      if (!edits || edits.length === 0) {
+        viewer.innerHTML = `<div style="padding:24px; color:var(--muted);">NO PATCH GENERATED (OUT OF SCOPE OR SKIPPED)</div>`;
+        return;
+      }
+
+      edits.forEach(edit => {
+        const fileHeader = document.createElement("div");
+        fileHeader.className = "diff-file-header";
+        fileHeader.innerHTML = `
+          <span>${escapeHtml(edit.file)}</span>
+          <span style="color:var(--muted); font-size:10px;">UNIFIED DIFF</span>
+        `;
+        viewer.appendChild(fileHeader);
+
+        const linesWrap = document.createElement("div");
+        linesWrap.className = "diff-lines-wrap";
+
+        const oldLines = edit.old_snippet.split("\n");
+        const newLines = edit.new_snippet.split("\n");
+
+        let lineHtml = `<div class="diff-line diff-hunk"><span class="diff-line-num">@@</span><span class="diff-line-code">@@ -42,6 +42,8 @@ in ${escapeHtml(edit.file)}</span></div>`;
+
+        oldLines.forEach((l, idx) => {
+          lineHtml += `<div class="diff-line diff-del"><span class="diff-line-num">${42 + idx}</span><span class="diff-line-code">- ${escapeHtml(l)}</span></div>`;
+        });
+
+        newLines.forEach((l, idx) => {
+          lineHtml += `<div class="diff-line diff-add"><span class="diff-line-num">${42 + idx}</span><span class="diff-line-code">+ ${escapeHtml(l)}</span></div>`;
+        });
+
+        linesWrap.innerHTML = lineHtml;
+        viewer.appendChild(linesWrap);
+      });
+    }
+
+    function resetPipelineCards() {
+      const agents = ["triage", "coder", "tester", "reviewer", "pr"];
+      agents.forEach(agent => {
+        const card = document.getElementById(`agent-card-${agent}`);
+        card.className = "pipeline-card";
+        document.getElementById(`dot-${agent}`).className = "status-dot dot-waiting";
+        document.getElementById(`label-${agent}`).innerText = "WAITING";
+        document.getElementById(`timer-${agent}`).innerText = "00.0s";
+      });
+      document.getElementById("tag-coder-attempt").style.display = "none";
+      document.getElementById("tag-tester-attempt").style.display = "none";
+      document.getElementById("animated-stream-line").style.display = "none";
+      document.getElementById("final-pr-container").style.display = "none";
+      document.getElementById("run-overall-status").innerHTML = `<span class="status-dot dot-working"></span> WORKING`;
+    }
+
+    function startLiveSimulation(detail) {
+      resetPipelineCards();
+      const isRetryRun = detail.run.id === 102;
+
+      let elapsed = 0;
+      const streamLine = document.getElementById("animated-stream-line");
+
+      function setAgentState(agent, state, label, timerVal, summary) {
+        const card = document.getElementById(`agent-card-${agent}`);
+        const dot = document.getElementById(`dot-${agent}`);
+        const lbl = document.getElementById(`label-${agent}`);
+        const tmr = document.getElementById(`timer-${agent}`);
+        const sum = document.getElementById(`summary-${agent}`);
+
+        card.className = `pipeline-card ${state}`;
+        dot.className = `status-dot dot-${state}`;
+        lbl.innerText = label;
+        if (timerVal) tmr.innerText = timerVal;
+        if (summary) sum.innerText = summary;
+      }
+
+      // Step 1: Triage Working immediately
+      setAgentState("triage", "working", "WORKING", "00.5s", "Analyzing issue syntax, checking security boundaries...");
+      streamLine.style.display = "block";
+      streamLine.style.left = "4%";
+      streamLine.style.width = "14%";
+
+      // Timer 1: Triage Done after ~1.5s -> Coder starts
+      const t1 = setTimeout(() => {
+        setAgentState("triage", "done", "DONE", "01.4s", "Issue classified as IN_SCOPE. Score: " + detail.payloads.triage.score);
+        setAgentState("coder", "working", "WORKING", "00.8s", "Generating minimal patch for " + detail.payloads.triage.suspected_files[0]);
+
+        if (isRetryRun) {
+          document.getElementById("tag-coder-attempt").style.display = "inline-block";
+          document.getElementById("tag-coder-attempt").innerText = "ATTEMPT 1/3";
+        }
+
+        streamLine.style.left = "23%";
+        streamLine.style.width = "16%";
+      }, 1500);
+      simIntervals.push(t1);
+
+      // Timer 2: Coder Done after ~3.0s (at 4.5s) -> Tester starts
+      const t2 = setTimeout(() => {
+        setAgentState("coder", "done", "DONE", "03.0s", "Patch constructed and validated with static analyzer.");
+        setAgentState("tester", "working", "WORKING", "01.2s", "Running full test suite in network-isolated Docker sandbox...");
+
+        if (isRetryRun) {
+          document.getElementById("tag-tester-attempt").style.display = "inline-block";
+          document.getElementById("tag-tester-attempt").innerText = "ATTEMPT 1/3";
+        }
+
+        streamLine.style.left = "43%";
+        streamLine.style.width = "16%";
+      }, 4500);
+      simIntervals.push(t2);
+
+      if (isRetryRun) {
+        // Preset #102: Tester fails attempt 1, retries attempt 2, passes!
+        const tRetryFail = setTimeout(() => {
+          setAgentState("tester", "failed", "FAILED", "02.4s", "Attempt 1 failed: trailing slice dropped. Triggering retry loop...");
+          document.getElementById("tag-tester-attempt").innerText = "RETRYING (2/3)";
+          document.getElementById("tag-coder-attempt").innerText = "ATTEMPT 2/3";
+          setAgentState("coder", "working", "RETRYING", "01.2s", "Re-synthesizing slice calculation from pytest feedback...");
+          streamLine.style.left = "23%";
+        }, 6500);
+        simIntervals.push(tRetryFail);
+
+        const tRetryPass = setTimeout(() => {
+          setAgentState("coder", "done", "DONE", "02.1s", "Corrected slice calculation for all array lengths.");
+          setAgentState("tester", "working", "WORKING", "01.5s", "Executing pytest attempt 2 in sandbox...");
+          streamLine.style.left = "43%";
+        }, 8200);
+        simIntervals.push(tRetryPass);
+
+        const tRetryTesterDone = setTimeout(() => {
+          setAgentState("tester", "done", "DONE", "02.0s", "14 passed, 0 failed. All regressions eliminated.");
+          setAgentState("reviewer", "working", "WORKING", "00.6s", "Auditing diff and running safety gate checks...");
+          streamLine.style.left = "63%";
+          streamLine.style.width = "16%";
+        }, 10000);
+        simIntervals.push(tRetryTesterDone);
+
+        const tReviewerDone = setTimeout(() => {
+          setAgentState("reviewer", "done", "DONE", "01.9s", "Safety gates passed: VERDICT APPROVE");
+          setAgentState("pr", "done", "DONE", "00.8s", "Pull request #215 ready for maintainer.");
+          streamLine.style.display = "none";
+          document.getElementById("final-pr-container").style.display = "flex";
+          document.getElementById("run-overall-status").innerHTML = `<span class="status-dot dot-done"></span> DONE`;
+        }, 12000);
+        simIntervals.push(tReviewerDone);
+
+      } else {
+        // Standard Passing Flow (Preset #101)
+        // Timer 3: Tester Done after ~3.0s (at 7.5s) -> Reviewer starts
+        const t3 = setTimeout(() => {
+          setAgentState("tester", "done", "DONE", "03.2s", "12 passed, 0 failed. Pytest suite 100% green.");
+          setAgentState("reviewer", "working", "WORKING", "00.8s", "Auditing diff for safety gate violations & regressions...");
+          streamLine.style.left = "63%";
+          streamLine.style.width = "16%";
+        }, 7500);
+        simIntervals.push(t3);
+
+        // Timer 4: Reviewer Done after ~2.0s (at 9.5s) -> PR opens
+        const t4 = setTimeout(() => {
+          setAgentState("reviewer", "done", "DONE", "02.1s", "Safety gate clean: VERDICT APPROVE.");
+          setAgentState("pr", "done", "DONE", "00.6s", "Branch pushed to origin. Pull request #214 ready.");
+          streamLine.style.display = "none";
+
+          document.getElementById("final-pr-container").style.display = "flex";
+          document.getElementById("run-overall-status").innerHTML = `<span class="status-dot dot-done"></span> DONE`;
+        }, 9500);
+        simIntervals.push(t4);
+      }
+    }
+
+    function renderSkippedRun(detail) {
+      resetPipelineCards();
+      document.getElementById("animated-stream-line").style.display = "none";
+
+      const card = document.getElementById("agent-card-triage");
+      card.className = "pipeline-card done";
+      document.getElementById("dot-triage").className = "status-dot dot-skipped";
+      document.getElementById("label-triage").innerText = "SKIPPED";
+      document.getElementById("timer-triage").innerText = "01.2s";
+      document.getElementById("summary-triage").innerText = "OUT_OF_SCOPE: Unconstrained architecture rewrite rejected.";
+
+      ["coder", "tester", "reviewer", "pr"].forEach(agent => {
+        const c = document.getElementById(`agent-card-${agent}`);
+        c.className = "pipeline-card";
+        document.getElementById(`dot-${agent}`).className = "status-dot dot-skipped";
+        document.getElementById(`label-${agent}`).innerText = "SKIPPED";
+        document.getElementById(`timer-${agent}`).innerText = "00.0s";
+        document.getElementById(`summary-${agent}`).innerText = "Agent skipped by Triage safety gate policy.";
+      });
+
+      document.getElementById("final-pr-container").style.display = "none";
+      document.getElementById("run-overall-status").innerHTML = `<span class="status-dot dot-skipped"></span> SKIPPED`;
+    }
+
+    function restartSimulation() {
+      const detail = MOCK_RUN_DETAILS[activeRunId] || MOCK_RUN_DETAILS[101];
+      loadRunDetail(detail.run.id);
+    }
+
+    function switchDetailTab(tabId) {
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        const isActive = btn.dataset.tab === tabId;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      document.querySelectorAll(".tab-content").forEach(c => {
+        c.classList.toggle("active", c.id === tabId);
+      });
+    }
+
+    function toggleLogTail() {
+      const tail = document.getElementById("tests-log-tail");
+      const icon = document.getElementById("log-toggle-icon");
+      if (tail.style.display === "none") {
+        tail.style.display = "block";
+        icon.innerText = "[ COLLAPSE - ]";
+      } else {
+        tail.style.display = "none";
+        icon.innerText = "[ EXPAND + ]";
+      }
+    }
+
+    /* ==========================================================================
+       HELPERS
+       ========================================================================== */
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function formatTimeAgo(isoString) {
+      if (!isoString) return "just now";
+      const date = new Date(isoString);
+      const diff = Math.floor((new Date() - date) / 1000);
+      if (diff < 60) return `${diff}s ago`;
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+      return `${Math.floor(diff / 3600)}h ago`;
+    }
+
+    /* ==========================================================================
+       INITIALIZATION
+       ========================================================================== */
+    window.addEventListener("DOMContentLoaded", () => {
+      initThree();
+      window.addEventListener("hashchange", handleHashChange);
+      handleHashChange();
+    });
+  </script>
+</body>
+</html>
